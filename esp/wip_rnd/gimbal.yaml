@@ -1,0 +1,60 @@
+esphome:
+  name: gimbal
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+# Enable logging
+logger:
+
+# Web server component
+web_server:
+  port: 80
+
+ota:
+
+output:
+  - platform: esp8266_pwm
+    id: servo_x
+    pin: D6
+    frequency: 50Hz
+  - platform: esp8266_pwm
+    id: servo_y
+    pin: D7
+    frequency: 50Hz
+
+servo:
+  - id: gimbal_servo_x
+    output: servo_x 
+    transition_length: 2s
+  - id: gimbal_servo_y
+    output: servo_y
+    transition_length: 2s
+
+fan:
+  - platform: speed
+    id: servo_control_x
+    output: servo_x
+    restore_mode: RESTORE_DEFAULT_OFF
+    name: "X axis"
+    on_speed_set:
+      then:
+        - lambda: |-
+            // Convert fan speed (0-100%) to servo level (-1.0 to 1.0)
+            float servo_level = (x * 2.0 / 100.0) - 1.0;
+            id(gimbal_servo_x).write(servo_level);
+
+  - platform: speed
+    id: servo_control_y
+    output: servo_y
+    restore_mode: RESTORE_DEFAULT_OFF
+    name: "Y axis"
+    on_speed_set:
+      then:
+        - lambda: |-
+            // Convert fan speed (0-100%) to servo level (-1.0 to 1.0)
+            float servo_level = (x * 2.0 / 100.0) - 1.0;
+            id(gimbal_servo_y).write(servo_level);

@@ -1,0 +1,47 @@
+esphome:
+  name: servocontrol
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+# Enable logging
+logger:
+
+# Web server component
+web_server:
+  port: 80
+
+ota:
+
+switch:
+  - platform: gpio
+    id: relay_output
+    pin:
+      number: D3
+      inverted: true
+    name: "pump"  # Add a name to the switch to make it appear in the web UI
+
+output:
+  - platform: esp8266_pwm
+    id: servo_output
+    pin: D6
+    frequency: 50Hz
+
+servo:
+  - id: my_servo
+    output: servo_output
+
+fan:
+  - platform: speed
+    id: servo_control_fan
+    output: servo_output
+    name: "Servo Control"
+    on_speed_set:
+      then:
+        - lambda: |-
+            // Convert fan speed (0-100%) to servo level (-1.0 to 1.0)
+            float servo_level = (x * 2.0 / 100.0) - 1.0;
+            id(my_servo).write(servo_level);

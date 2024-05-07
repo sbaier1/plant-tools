@@ -1,0 +1,131 @@
+esphome:
+  name: seedlingbox
+  platform: ESP8266
+  board: d1_mini
+  # platformio_options:
+  #   platform: espressif8266@2.6.3
+  #   platform_packages: 
+  #     - platformio/toolchain-xtensa@2.40802.200502
+  #     - platformio/framework-arduinoespressif8266@3.20704.0
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+#api:
+
+ota:
+
+# Enable I2C
+i2c:
+  sda: D2
+  scl: D1
+  scan: True
+
+web_server:
+  port: 80
+
+sensor:
+# ambient light optional
+#  - platform: bh1750
+#    name: "BH1750 Light Sensor"
+#    address: 0x23
+#    update_interval: 5s
+#    id: bh1750_sensor
+  - platform: dht
+    pin: D3
+    model: DHT11
+    temperature:
+      name: "DHT11 Temperature"
+      id: dht_temp
+    humidity:
+      name: "DHT11 Humidity"
+      id: dht_hum
+    update_interval: 15s
+
+output:
+  - platform: esp8266_pwm
+    pin:
+      number: D6
+      inverted: true
+    id: gpio_pwm
+    frequency: 1000 Hz
+  - platform: esp8266_pwm
+    pin: D7  # GPIO pin connected to the PWM input of the fan
+    id: pwm_fan_output
+    frequency: 25000 Hz  # Set the PWM frequency to 25 kHz
+
+globals:
+  - id: pwm_duty
+    type: int
+    restore_value: no
+    initial_value: '0'
+light:
+  - platform: monochromatic
+    output: gpio_pwm
+    restore_mode: RESTORE_DEFAULT_ON 
+    name: "PWM Light"
+    id: pwm_light
+fan:
+  - platform: speed
+    output: pwm_fan_output
+    name: "PWM Fan"
+    id: my_fan
+    speed_count: 10
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: 'Europe/Berlin'
+# Enable HTTP requests
+http_request:
+  id: http_request_data
+  useragent: esphome/seedlingbox
+  timeout: 2s
+interval:
+  - interval: 30s
+    then:
+      - lambda: |-
+          // lux threshold
+          const int threshold = 15000;
+          auto time = id(sntp_time).now();
+          if (!time.is_valid()) {
+            ESP_LOGD("Light Control", "SNTP time not valid.");
+            return;
+          }
+          int hour = time.hour;
+          ESP_LOGD("Light Control", "Current Hour: %d", hour);
+          if (hour >= 5 && hour < 22) {
+            // always max for now
+            int duty = 1023;
+            id(gpio_pwm).set_level(duty / 1023.0);
+            id(pwm_duty) = duty;
+            ESP_LOGD("Light Control", "Setting PWM based on light: Duty Cycle = %d", duty);
+          } else {
+            ESP_LOGD("Light Control", "Outside lighting hours, turning off light.");
+            id(gpio_pwm).set_level(0);
+            id(pwm_duty) = 1023;
+          }
+  - interval: 10s
+    then:
+      - http_request.post:
+          url: !secret monitoring_target
+          verify_ssl: false
+          headers:
+            Authorization: !secret monitoring_token
+            Content-Type: "text/plain"
+          body: !lambda |-
+            return (
+              //"light,sensor=bh1750,location=seedlingbox value=" + to_string(id(bh1750_sensor).state) +
+              //"\n" +
+              "temperature,sensor=dht11,location=seedlingbox value=" + to_string(id(dht_temp).state) +
+              "\n" +
+              "humidity,sensor=dht11,location=seedlingbox value=" + to_string(id(dht_hum).state)
+            ).c_str();
+          on_response:
+            then:
+              - logger.log: 
+                  format: "Got REST response: %s"
+                  args : ['id(http_request_data).get_string()']

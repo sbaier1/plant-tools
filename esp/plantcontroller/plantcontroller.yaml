@@ -1,0 +1,185 @@
+esphome:
+  name: plantcontroller
+  platform: ESP8266
+  board: d1_mini
+  # platformio_options:
+  #   platform: espressif8266@2.6.3
+  #   platform_packages: 
+  #     - platformio/toolchain-xtensa@2.40802.200502
+  #     - platformio/framework-arduinoespressif8266@3.20704.0
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+wireguard:
+  address: 10.8.0.108
+  private_key: !secret wg_privkey
+  peer_endpoint: !secret wg_peer
+  peer_public_key: !secret wg_peer_pubkey
+
+  netmask: 255.255.255.0
+
+  # Optional endpoint port (WireGuard default if omitted)
+  peer_port: 51820
+  # Optional keepalive (disabled by default)
+  peer_persistent_keepalive: 25s
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: 'Europe/Berlin'
+# TLS doesn't work https://www.reddit.com/r/Esphome/comments/1b9v73k/esp8266_connect_to_mqtt_using_tls/
+# mqtt:
+#   broker: 209ef514eb85466e84a88ade4808203c.s1.eu.hivemq.cloud
+#   port: 8883
+#   username: !secret mqtt_user
+#   password: !secret mqtt_pass
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+#api:
+
+ota:
+
+# Enable I2C
+i2c:
+  sda: D2
+  scl: D1
+  scan: True
+
+web_server:
+  port: 80
+
+sensor:
+  # measure lux
+  # - platform: bh1750
+  #   name: "BH1750 Light Sensor"
+  #   address: 0x23
+  #   update_interval: 5s
+  #   id: bh1750_sensor
+  # measure soil moisture percentage
+  - platform: adc
+    pin: A0
+    name: soil1
+    id: soil1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    filters:
+    - median:
+        window_size: 7
+        send_every: 4
+        send_first_at: 1
+    - calibrate_linear:
+        - 0.85 -> 0.00
+        - 0.44 -> 100.00
+    - lambda: if (x < 1) return 0; else return (x);
+    accuracy_decimals: 2
+  # measure RH (+temp opt.)
+  - platform: htu21d
+    temperature:
+      name: "Temperature"
+      id: htu21d_temperature
+    humidity:
+      name: "Humidity"
+      id: htu21d_humidity
+    heater:
+      name: "Heater"
+    update_interval: 10s
+  # measure leaf temp
+  - platform: mlx90614
+    ambient:
+      name: "Ambient"
+    object:
+      name: "Object"
+      id: mlx_object_temperature
+    update_interval: 10s
+output:
+  - platform: esp8266_pwm
+    pin:
+      number: D6
+      inverted: true
+    id: gpio_pwm
+    frequency: 1000 Hz
+
+globals:
+  - id: pwm_duty
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: vpd
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: light_on
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+light:
+  - platform: monochromatic
+    output: gpio_pwm
+    restore_mode: RESTORE_DEFAULT_ON 
+    name: "PWM Light"
+    id: pwm_light
+# Enable HTTP requests
+http_request:
+  id: http_request_data
+  useragent: esphome/anzuchtbox
+  timeout: 2s
+interval:
+# light operation test
+#   - interval: 3s
+#     then:
+#       - if:
+#           condition:
+#             lambda: return id(light_on);
+#           then:
+#             - light.turn_off:
+#                 id: pwm_light
+#                 transition_length: 2s
+#           else:
+#             - light.turn_on:
+#                 id: pwm_light
+#                 brightness: 100%
+#                 transition_length: 2s
+#       - lambda: id(light_on) = !id(light_on);
+
+  # Calculate VPD periodically
+  - interval: 10s
+    then:
+      - lambda: |-
+          float temperature = id(mlx_object_temperature).state;  // Using HTU21D temperature for VPD calculation
+          float humidity = id(htu21d_humidity).state;
+          float saturation_vapor_pressure = 0.61078 * exp((17.269 * temperature) / (237.3 + temperature));
+          float actual_vapor_pressure = saturation_vapor_pressure * (humidity / 100.0);
+          float vpd_value = (saturation_vapor_pressure - actual_vapor_pressure) * 1000; // Convert kPa to Pa
+          id(vpd) = vpd_value;
+          ESP_LOGD("custom", "Calculated VPD: %.2f Pa", vpd_value);
+  # send metrics.
+  # This is a relatively simple way to send out data directly from the ESP to Grafana Cloud.
+  - interval: 10s
+    then:
+      - http_request.post:
+          url: !secret monitoring_target
+          verify_ssl: false
+          headers:
+            Authorization: !secret monitoring_token
+            Content-Type: "text/plain"
+          # This sends an InfluxDB line protocol message https://docs.influxdata.com/influxdb/cloud/reference/syntax/line-protocol/
+          body: !lambda |-
+            return (
+              "temperature,sensor=htu21d value=" + to_string(id(htu21d_temperature).state) +
+              "\n" +
+              "humidity,sensor=htu21d value=" + to_string(id(htu21d_humidity).state) +
+              "\n" +
+              "object_temperature,sensor=mlx90614 value=" + to_string(id(mlx_object_temperature).state) +
+              "\n" +
+              "soil_moisture,sensor=soil12 value=" + to_string(id(soil1).state) +
+              "\n" +
+              "vpd,sensor=custom value=" + to_string(id(vpd))
+            ).c_str();
+          on_response:
+            then:
+              - logger.log: 
+                  format: "Got REST response: %s"
+                  args : ['id(http_request_data).get_string()']

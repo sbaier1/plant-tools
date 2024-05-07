@@ -1,0 +1,42 @@
+# wiring:
+# common ground (-12V + D1 Mini GND)
+# D1 to PWM pin (blue? one is always sensor on 4 pin fans. unused here)
+# fan with regular 12V supply.
+esphome:
+  name: pwmfan
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+web_server:
+  port: 80
+ota:
+
+# PWM fan configuration
+output:
+  - platform: esp8266_pwm
+    pin: D1  # GPIO pin connected to the PWM input of the fan
+    id: pwm_fan_output
+    frequency: 25000 Hz  # Set the PWM frequency to 25 kHz
+
+fan:
+  - platform: speed
+    output: pwm_fan_output
+    name: "PWM Fan"
+    id: my_fan
+    speed_count: 10
+
+# Optional: You can add a switch to turn the fan on and off
+switch:
+  - platform: gpio
+    pin: D2  # GPIO pin to control the fan power (if applicable)
+    name: "Fan Power"
+    restore_mode: ALWAYS_ON
