@@ -67,10 +67,14 @@ globals:
     type: int
     restore_value: no
     initial_value: '0'
+  - id: vpd
+    type: float
+    restore_value: no
+    initial_value: '0.0'
 light:
   - platform: monochromatic
     output: gpio_pwm
-    restore_mode: RESTORE_DEFAULT_ON 
+    restore_mode: RESTORE_DEFAULT_ON
     name: "PWM Light"
     id: pwm_light
 fan:
@@ -114,6 +118,14 @@ interval:
           }
   - interval: 10s
     then:
+      - lambda: |-
+          float temperature = id(dht_temp).state;  // Using DHT11 temperature for VPD calculation
+          float humidity = id(dht_hum).state;
+          float saturation_vapor_pressure = 0.61078 * exp((17.269 * temperature) / (237.3 + temperature));
+          float actual_vapor_pressure = saturation_vapor_pressure * (humidity / 100.0);
+          float vpd_value = (saturation_vapor_pressure - actual_vapor_pressure) * 1000; // Convert kPa to Pa
+          id(vpd) = vpd_value;
+          ESP_LOGD("custom", "Calculated VPD: %.2f Pa", vpd_value);
       - http_request.post:
           url: !secret monitoring_target
           verify_ssl: false
@@ -126,7 +138,9 @@ interval:
               //"\n" +
               "temperature,sensor=dht11,location=seedlingbox value=" + to_string(id(dht_temp).state) +
               "\n" +
-              "humidity,sensor=dht11,location=seedlingbox value=" + to_string(id(dht_hum).state)
+              "humidity,sensor=dht11,location=seedlingbox value=" + to_string(id(dht_hum).state) +
+              "\n" +
+              "vpd,sensor=calculated,location=seedlingbox value=" + to_string(id(vpd))
             ).c_str();
           on_response:
             then:
@@ -135,9 +149,14 @@ interval:
                   args : ['id(http_request_data).get_string()']
   - interval: 30min
     then:
-      - fan.turn_on:
-          id: my_fan
-          speed: 5
+      # Check VPD threshold first so we don't dry out the environment too much
+      - lambda: |-
+          if (id(vpd) <= 800.0) {
+            id(my_fan).turn_on().set_speed(5);  // Set fan speed to level 5 (50% duty cycle)
+            ESP_LOGD("custom", "Fan turned on at speed 5.");
+          } else {
+            ESP_LOGD("custom", "VPD is above threshold, not turning on the fan.");
+          }
       - delay: 10s
       - fan.turn_off:
           id: my_fan
