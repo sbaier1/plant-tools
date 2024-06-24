@@ -130,6 +130,14 @@ interval:
             ).c_str();
           on_response:
             then:
-              - logger.log: 
+              - logger.log:
                   format: "Got REST response: %s"
                   args : ['id(http_request_data).get_string()']
+  - interval: 30min
+    then:
+      - fan.turn_on:
+          id: my_fan
+          speed: 5
+      - delay: 10s
+      - fan.turn_off:
+          id: my_fan
