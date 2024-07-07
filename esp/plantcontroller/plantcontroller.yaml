@@ -186,7 +186,24 @@ interval:
               - logger.log:
                   format: "Got REST response: %s"
                   args: [ 'id(http_request_data).get_string()' ]
-
+  # light operation based on time
+  - interval: 1min
+    then:
+      - lambda: |-
+          auto time = id(sntp_time).now();
+          if (time.hour >= 6 && time.hour < 24) {
+            if (!id(light_on)) {
+              id(light_on) = true;
+              id(pwm_light).turn_on();
+              ESP_LOGD("custom", "Light turned on");
+            }
+          } else {
+            if (id(light_on)) {
+              id(light_on) = false;
+              id(pwm_light).turn_off();
+              ESP_LOGD("custom", "Light turned off");
+            }
+          }
 switch:
   - platform: gpio
     pin: D0
