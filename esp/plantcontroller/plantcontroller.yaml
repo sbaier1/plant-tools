@@ -100,7 +100,7 @@ sensor:
 output:
   - platform: esp8266_pwm
     pin:
-      number: D6
+      number: D8
       inverted: true
     id: gpio_pwm
     frequency: 1000 Hz
@@ -121,7 +121,7 @@ globals:
 light:
   - platform: monochromatic
     output: gpio_pwm
-    restore_mode: RESTORE_DEFAULT_ON 
+    restore_mode: RESTORE_DEFAULT_ON
     name: "PWM Light"
     id: pwm_light
 # Enable HTTP requests
@@ -183,6 +183,31 @@ interval:
             ).c_str();
           on_response:
             then:
-              - logger.log: 
+              - logger.log:
                   format: "Got REST response: %s"
-                  args : ['id(http_request_data).get_string()']
+                  args: [ 'id(http_request_data).get_string()' ]
+
+switch:
+  - platform: gpio
+    pin: D0
+    name: "Pump"
+    inverted: true
+    id: switch1
+
+  - platform: gpio
+    pin: D5
+    name: "Fan 1"
+    inverted: true
+    id: switch2
+
+  - platform: gpio
+    pin: D6
+    name: "Humidifier"
+    inverted: true
+    id: switch3
+
+  - platform: gpio
+    pin: D7
+    name: "Switch 4"
+    inverted: true
+    id: switch4
