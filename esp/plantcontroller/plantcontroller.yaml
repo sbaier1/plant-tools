@@ -2,11 +2,7 @@ esphome:
   name: plantcontroller
   platform: ESP8266
   board: d1_mini
-  # platformio_options:
-  #   platform: espressif8266@2.6.3
-  #   platform_packages: 
-  #     - platformio/toolchain-xtensa@2.40802.200502
-  #     - platformio/framework-arduinoespressif8266@3.20704.0
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_pass
@@ -118,6 +114,18 @@ globals:
     type: bool
     restore_value: yes
     initial_value: 'false'
+  - id: pump_duration_ms
+    type: int
+    restore_value: no
+    initial_value: '60000'  # Default duration is 60 seconds (60 ml/min)
+  - id: light_start_hour_value
+    type: int
+    restore_value: yes
+    initial_value: '6'  # Default start at 6 AM
+  - id: light_duration_value
+    type: int
+    restore_value: yes
+    initial_value: '18'  # Default duration is 18 hours
 light:
   - platform: monochromatic
     output: gpio_pwm
@@ -130,24 +138,6 @@ http_request:
   useragent: esphome/anzuchtbox
   timeout: 2s
 interval:
-# light operation test
-#   - interval: 3s
-#     then:
-#       - if:
-#           condition:
-#             lambda: return id(light_on);
-#           then:
-#             - light.turn_off:
-#                 id: pwm_light
-#                 transition_length: 2s
-#           else:
-#             - light.turn_on:
-#                 id: pwm_light
-#                 brightness: 100%
-#                 transition_length: 2s
-#       - lambda: id(light_on) = !id(light_on);
-
-  # Calculate VPD periodically
   - interval: 10s
     then:
       - lambda: |-
@@ -186,39 +176,112 @@ interval:
               - logger.log:
                   format: "Got REST response: %s"
                   args: [ 'id(http_request_data).get_string()' ]
-  # light operation based on time
   - interval: 1min
     then:
       - lambda: |-
           auto time = id(sntp_time).now();
-          if (time.hour >= 6 && time.hour < 24) {
+          int start_hour = id(light_start_hour_value);
+          int end_hour = (start_hour + id(light_duration_value)) % 24;
+          bool light_on = (time.hour >= start_hour && time.hour < end_hour) ||
+                          (start_hour > end_hour && (time.hour >= start_hour || time.hour < end_hour));
+
+          if (light_on) {
             id(pwm_light).turn_on().perform();
-            ESP_LOGD("custom", "Light on");
+            ESP_LOGD("custom", "Light is ON (start hour: %d, duration: %d)", start_hour, id(light_duration_value));
           } else {
             id(pwm_light).turn_off().perform();
-            ESP_LOGD("custom", "Light off");
+            ESP_LOGD("custom", "Light is OFF (start hour: %d, duration: %d)", start_hour, id(light_duration_value));
           }
+#  - interval: 5min
+#    then:
+#      - lambda: |-
+#          if (id(vpd) - 200 > id(target_vpd)) {
+#            // VPD is too high, turn on humidifier and fan
+#            id(sw_humidifier).turn_on();
+#            id(sw_fan).turn_on();
+#            id(vpd_control).turn_on(); // Activate timer for turning off
+#          } else if (id(vpd) + 200 < id(target_vpd)) {
+#            // VPD is too low, turn off humidifier and turn on fan
+#            id(sw_humidifier).turn_off();
+#            id(sw_fan).turn_on();
+#            id(vpd_control).turn_on(); // Activate timer for turning off
+#          }
 switch:
   - platform: gpio
     pin: D0
     name: "Pump"
     inverted: true
-    id: switch1
+    id: sw_pump
+    on_turn_on:
+      then:
+        - script.execute: pump_control
 
   - platform: gpio
     pin: D5
     name: "Fan 1"
     inverted: true
-    id: switch2
-
+    restore_mode: RESTORE_DEFAULT_ON
+    id: sw_fan
+  - platform: gpio
+    pin: D7
+    name: "Fan 2"
+    inverted: true
+    restore_mode: RESTORE_DEFAULT_ON
+    id: switch4
   - platform: gpio
     pin: D6
     name: "Humidifier"
     inverted: true
-    id: switch3
+    id: sw_humidifier
+    restore_mode: RESTORE_DEFAULT_OFF
+script:
+  - id: pump_control
+    then:
+      - delay: !lambda "return id(pump_duration_ms);"
+      - switch.turn_off: sw_pump
+      - lambda: |-
+          ESP_LOGD("custom", "Pump ran for %d ms", id(pump_duration_ms));
 
-  - platform: gpio
-    pin: D7
-    name: "Switch 4"
-    inverted: true
-    id: switch4
+number:
+  - platform: template
+    name: "Pump Duration"
+    id: pump_duration
+    min_value: 60
+    max_value: 2000
+    step: 1
+    unit_of_measurement: "ml"
+    optimistic: true
+    initial_value: 60
+    set_action:
+      - lambda: |-
+          int duration_ms = (int(x) / 60.0) * 60000;
+          id(pump_duration_ms) = duration_ms;
+          ESP_LOGD("custom", "Pump duration set to: %d ms", duration_ms);
+  # Slider for light start hour (24-hour format)
+  - platform: template
+    name: "Light Start Hour"
+    id: light_start_hour
+    min_value: 0
+    max_value: 23
+    step: 1
+    unit_of_measurement: "h"
+    optimistic: true
+    initial_value: 6
+    set_action:
+      - lambda: |-
+          id(light_start_hour_value) = (int)x;
+          ESP_LOGD("custom", "Light start hour set to: %d", id(light_start_hour_value));
+  # Slider for light duration in hours
+  - platform: template
+    name: "Light Duration"
+    id: light_duration
+    min_value: 1
+    max_value: 24
+    step: 1
+    unit_of_measurement: "h"
+    optimistic: true
+    initial_value: 18
+    set_action:
+      - lambda: |-
+          id(light_duration_value) = (int)x;
+          ESP_LOGD("custom", "Light duration set to: %d", id(light_duration_value));
