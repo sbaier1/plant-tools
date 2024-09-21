@@ -7,6 +7,23 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_pass
 
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: 'Europe/Berlin'
+wireguard:
+  address: 10.8.0.111
+  private_key: !secret wg_privkey_2
+  peer_endpoint: !secret wg_peer
+  peer_public_key: !secret wg_peer_pubkey
+
+  netmask: 255.255.255.0
+
+  # Optional endpoint port (WireGuard default if omitted)
+  peer_port: 51820
+  # Optional keepalive (disabled by default)
+  peer_persistent_keepalive: 25s
+
 # Enable logging
 logger:
 
@@ -19,20 +36,22 @@ ota:
 output:
   - platform: esp8266_pwm
     id: servo_x
-    pin: D6
+    pin: D4
     frequency: 50Hz
   - platform: esp8266_pwm
     id: servo_y
-    pin: D7
+    pin: D3
     frequency: 50Hz
 
 servo:
   - id: gimbal_servo_x
     output: servo_x 
     transition_length: 2s
+    auto_detach_time: 4s
   - id: gimbal_servo_y
     output: servo_y
     transition_length: 2s
+    auto_detach_time: 4s
 
 fan:
   - platform: speed
