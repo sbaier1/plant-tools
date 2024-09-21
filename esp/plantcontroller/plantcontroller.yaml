@@ -121,11 +121,11 @@ globals:
   - id: light_start_hour_value
     type: int
     restore_value: yes
-    initial_value: '6'  # Default start at 6 AM
+    initial_value: '8'  # Default start at 6 AM
   - id: light_duration_value
     type: int
     restore_value: yes
-    initial_value: '18'  # Default duration is 18 hours
+    initial_value: '12'  # Default duration is 18 hours
 light:
   - platform: monochromatic
     output: gpio_pwm
