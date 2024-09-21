@@ -100,6 +100,10 @@ output:
       inverted: true
     id: gpio_pwm
     frequency: 1000 Hz
+  - platform: esp8266_pwm
+    pin: D5
+    id: pwm_fan_output
+    frequency: 25000 Hz
 
 globals:
   - id: pwm_duty
@@ -220,6 +224,14 @@ interval:
 #            id(sw_fan).turn_on();
 #            id(vpd_control).turn_on(); // Activate timer for turning off
 #          }
+
+fan:
+  - platform: speed
+    output: pwm_fan_output
+    name: "PWM Fan 1"
+    id: my_fan
+    speed_count: 50
+    restore_mode: RESTORE_DEFAULT_ON
 switch:
   - platform: gpio
     pin: D0
@@ -230,12 +242,6 @@ switch:
       then:
         - script.execute: pump_control
 
-  - platform: gpio
-    pin: D5
-    name: "Fan 1"
-    inverted: true
-    restore_mode: RESTORE_DEFAULT_ON
-    id: sw_fan
   - platform: gpio
     pin: D7
     name: "Fan 2"
