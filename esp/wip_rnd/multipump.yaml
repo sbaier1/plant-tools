@@ -1,6 +1,7 @@
 # WIP, not reliable. i may just go for two regular peristaltic pumps instead.
 # The idea is to drive a small 5V motor with a gearbox for torque as the pump driver + a single micro servo as the pump "switcher".
 # This would allow a multiplexed pump driven from a single motor to drive as many pumps as the servo can select.
+# It also does not need any separate power source, in this form it all runs from the D1 mini's 5V input power.
 # For switching the motor i use a BC337 transistor with a 1K resistor on the base to switch to ground.
 # The servo is just directly connected to a GPIO pin.
 # short BOM:
