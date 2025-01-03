@@ -1,0 +1,52 @@
+esphome:
+  name: multipump
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+
+# Enable logging
+logger:
+
+# Web server component
+web_server:
+  port: 80
+
+ota:
+
+# Motor Control (via BC337 transistor)
+switch:
+  - platform: gpio
+    id: motor_switch
+    pin:
+      number: D7
+      inverted: false
+    name: "5V Motor"
+
+# Servo Control
+output:
+  - platform: esp8266_pwm
+    id: servo_output
+    pin: D6
+    frequency: 50Hz
+
+servo:
+  - id: my_servo
+    output: servo_output
+    transition_length: 500ms
+    auto_detach_time: 4s
+
+# Example control for Servo
+fan:
+  - platform: speed
+    id: servo_control_fan
+    output: servo_output
+    name: "Servo Control"
+    on_speed_set:
+      then:
+        - lambda: |-
+            // Convert fan speed (0-100%) to servo level (-1.0 to 1.0)
+            float servo_level = (x * 2.0 / 100.0) - 1.0;
+            id(my_servo).write(servo_level);
