@@ -9,6 +9,7 @@
 # * M3 hex key (cut off the 90° turn to essentially turn it into a 3mm shaft and chamfer the edge with a file or sanding paper)
 # * SG90 microservo
 # * N20 5V geared motor (i tested with 60rpm models, i think 120rpm or more could also work)
+# * the pump is designed for 4mm diameter silicone tubing with 0.5mm wall thickness. (3mm inner diameter). the pump was built using
 # assembly
 # * The motor gets fixed using the pump driver bottom/top models, then slid onto the rails
 # * The pumps get slid onto the rails (arbitrary amount, as many as the drivespline can select)
