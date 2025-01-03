@@ -1,3 +1,21 @@
+# WIP, not reliable. i may just go for two regular peristaltic pumps instead.
+# The idea is to drive a small 5V motor with a gearbox for torque as the pump driver + a single micro servo as the pump "switcher".
+# This would allow a multiplexed pump driven from a single motor to drive as many pumps as the servo can select.
+# For switching the motor i use a BC337 transistor with a 1K resistor on the base to switch to ground.
+# The servo is just directly connected to a GPIO pin.
+# short BOM:
+# * 2 4mm rails
+# * M3 hex key (cut off the 90° turn to essentially turn it into a 3mm shaft and chamfer the edge with a file or sanding paper)
+# * SG90 microservo
+# * N20 5V geared motor (i tested with 60rpm models, i think 120rpm or more could also work)
+# assembly
+# * The motor gets fixed using the pump driver bottom/top models, then slid onto the rails
+# * The pumps get slid onto the rails (arbitrary amount, as many as the drivespline can select)
+# * the motor to hex adapter gets connected to the motor shaft, the hex shaft connected to it (use superglue)
+# * the drive spline slides onto the hex shaft
+# * the servo bracket slides onto the main rails
+# * the gear gets connected to the SG90 servo and laid onto the main drive spline.
+# * the motor can now actuate the selected pump via drivespline position, the servo can rotate to select a different pump.
 esphome:
   name: multipump
   platform: ESP8266
@@ -43,7 +61,7 @@ fan:
   - platform: speed
     id: servo_control_fan
     output: servo_output
-    name: "Servo Control"
+    name: "Servo direct control"
     on_speed_set:
       then:
         - lambda: |-
