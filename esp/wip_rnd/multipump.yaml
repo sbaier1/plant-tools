@@ -36,21 +36,17 @@ web_server:
 
 ota:
 
-# Motor Control (via BC337 transistor)
-switch:
-  - platform: gpio
-    id: motor_switch
-    pin:
-      number: D7
-      inverted: false
-    name: "5V Motor"
-
 # Servo Control
 output:
   - platform: esp8266_pwm
     id: servo_output
     pin: D6
     frequency: 50Hz
+  # Motor Control (via BC337 transistor)
+  - platform: esp8266_pwm
+    id: motor_pwm
+    pin: D7
+    frequency: 1000Hz  # 1kHz PWM frequency for smoother control
 
 servo:
   - id: my_servo
@@ -58,15 +54,44 @@ servo:
     transition_length: 500ms
     auto_detach_time: 4s
 
-# Example control for Servo
 fan:
+  - platform: speed
+    output: motor_pwm
+    id: motor_control
+    name: "Motor Speed Control"
   - platform: speed
     id: servo_control_fan
     output: servo_output
+    # This control is intended for calibrating the offset below by allowing to set the level precisely
     name: "Servo direct control"
     on_speed_set:
       then:
         - lambda: |-
             // Convert fan speed (0-100%) to servo level (-1.0 to 1.0)
             float servo_level = (x * 2.0 / 100.0) - 1.0;
+            ESP_LOGD("custom", "Setting servo level: %.2f", servo_level);
             id(my_servo).write(servo_level);
+  - platform: speed
+    id: position_control
+    output: servo_output
+    restore_mode: RESTORE_DEFAULT_ON
+    speed_count: 6
+    name: "position set"
+    on_speed_set:
+      then:
+        - lambda: |-
+            // Map slider value (1-6) to servo position (-1.0 to 1.0)
+            // TODO add an offset variable here since the first offset is not at -1.0
+            float position = (x - 1) * (2.0 / 5.0) - 1.0;
+
+            // Wiggle sequence: Motor pulse and servo move
+            for (int i = 0; i < 50; i++) {
+              id(my_servo).write(position); // Servo to target position
+              delay(200);                 // Wait 500ms
+              id(my_servo).detach();      // Detach servo
+            }
+            /*
+              id(motor_control).turn_on();  // Motor ON
+              delay(200);                 // Wait 500ms
+              id(motor_control).turn_off(); // Motor OFF
+            */

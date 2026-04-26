@@ -165,15 +165,15 @@ interval:
           # This sends an InfluxDB line protocol message https://docs.influxdata.com/influxdb/cloud/reference/syntax/line-protocol/
           body: !lambda |-
             return (
-              "temperature,sensor=htu21d value=" + to_string(id(htu21d_temperature).state) +
+              "temperature,sensor=htu21d,location=tent1 value=" + to_string(id(htu21d_temperature).state) +
               "\n" +
-              "humidity,sensor=htu21d value=" + to_string(id(htu21d_humidity).state) +
+              "humidity,sensor=htu21d,location=tent1 value=" + to_string(id(htu21d_humidity).state) +
               "\n" +
-              "object_temperature,sensor=mlx90614 value=" + to_string(id(mlx_object_temperature).state) +
+              "object_temperature,sensor=mlx90614,location=tent1 value=" + to_string(id(mlx_object_temperature).state) +
               "\n" +
-              "soil_moisture,sensor=soil12 value=" + to_string(id(soil1).state) +
+              "soil_moisture,sensor=soil12,location=tent1 value=" + to_string(id(soil1).state) +
               "\n" +
-              "vpd,sensor=custom value=" + to_string(id(vpd))
+              "vpd,sensor=custom,location=tent1 value=" + to_string(id(vpd))
             ).c_str();
           on_response:
             then:

@@ -8,8 +8,11 @@ esphome:
   #     - platformio/toolchain-xtensa@2.40802.200502
   #     - platformio/framework-arduinoespressif8266@3.20704.0
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_pass
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_pass
+    - ssid: !secret wifi2_ssid
+      password: !secret wifi2_pass
   ap:
     ssid: esp-captive
     password: !secret wifi_pass

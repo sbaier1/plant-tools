@@ -1,0 +1,231 @@
+esphome:
+  name: plantcontroller2
+  platform: ESP8266
+  board: d1_mini
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_pass
+  ap:
+    ssid: esp-captive
+    password: !secret wifi_pass
+#
+#wireguard:
+#  address: 10.8.0.108
+#  private_key: !secret wg_privkey
+#  peer_endpoint: !secret wg_peer
+#  peer_public_key: !secret wg_peer_pubkey
+#
+#  netmask: 255.255.255.0
+#
+#  # Optional endpoint port (WireGuard default if omitted)
+#  peer_port: 51820
+#  # Optional keepalive (disabled by default)
+#  peer_persistent_keepalive: 25s
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: 'Europe/Berlin'
+# TLS doesn't work https://www.reddit.com/r/Esphome/comments/1b9v73k/esp8266_connect_to_mqtt_using_tls/
+# mqtt:
+#   broker: 209ef514eb85466e84a88ade4808203c.s1.eu.hivemq.cloud
+#   port: 8883
+#   username: !secret mqtt_user
+#   password: !secret mqtt_pass
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+#api:
+
+ota:
+
+# Enable I2C
+i2c:
+  sda: D2
+  scl: D1
+  scan: True
+
+web_server:
+  port: 80
+
+sensor:
+  # measure lux
+  # - platform: bh1750
+  #   name: "BH1750 Light Sensor"
+  #   address: 0x23
+  #   update_interval: 5s
+  #   id: bh1750_sensor
+  # measure soil moisture percentage
+  - platform: adc
+    pin: A0
+    name: soil1
+    id: soil1
+    update_interval: 10s
+    unit_of_measurement: "%"
+    filters:
+    - median:
+        window_size: 7
+        send_every: 4
+        send_first_at: 1
+    - calibrate_linear:
+        - 0.85 -> 0.00
+        - 0.44 -> 100.00
+    - lambda: if (x < 1) return 0; else return (x);
+    accuracy_decimals: 2
+  # measure RH (+temp opt.)
+  - platform: htu21d
+    temperature:
+      name: "Temperature"
+      id: htu21d_temperature
+    humidity:
+      name: "Humidity"
+      id: htu21d_humidity
+    heater:
+      name: "Heater"
+    update_interval: 10s
+  # measure leaf temp
+  - platform: mlx90614
+    ambient:
+      name: "Ambient"
+    object:
+      name: "Object"
+      id: mlx_object_temperature
+    update_interval: 10s
+#output:
+#  - platform: esp8266_pwm
+#    pin:
+#      number: D8
+#      inverted: true
+#    id: gpio_pwm
+#    frequency: 1000 Hz
+
+globals:
+#  - id: pwm_duty
+#    type: int
+#    restore_value: no
+#    initial_value: '0'
+  - id: vpd
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+#  - id: light_on
+#    type: bool
+#    restore_value: yes
+#    initial_value: 'false'
+  - id: target_vpd
+    type: float
+    restore_value: yes
+    initial_value: '1200.0'  # Default target VPD
+
+#light:
+#  - platform: monochromatic
+#    output: gpio_pwm
+#    restore_mode: RESTORE_DEFAULT_ON
+#    name: "PWM Light"
+#    id: pwm_light
+# Enable HTTP requests
+http_request:
+  id: http_request_data
+  useragent: esphome/anzuchtbox
+  timeout: 2s
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          float temperature = id(mlx_object_temperature).state;  // Using HTU21D temperature for VPD calculation
+          float humidity = id(htu21d_humidity).state;
+          float saturation_vapor_pressure = 0.61078 * exp((17.269 * temperature) / (237.3 + temperature));
+          float actual_vapor_pressure = saturation_vapor_pressure * (humidity / 100.0);
+          float vpd_value = (saturation_vapor_pressure - actual_vapor_pressure) * 1000; // Convert kPa to Pa
+          id(vpd) = vpd_value;
+          ESP_LOGD("custom", "Calculated VPD: %.2f Pa", vpd_value);
+  # send metrics.
+  # This is a relatively simple way to send out data directly from the ESP to Grafana Cloud.
+  - interval: 10s
+    then:
+      - http_request.post:
+          url: !secret monitoring_target
+          verify_ssl: false
+          headers:
+            Authorization: !secret monitoring_token
+            Content-Type: "text/plain"
+          # This sends an InfluxDB line protocol message https://docs.influxdata.com/influxdb/cloud/reference/syntax/line-protocol/
+          body: !lambda |-
+            return (
+              "temperature,sensor=htu21d,location=tent2 value=" + to_string(id(htu21d_temperature).state) +
+              "\n" +
+              "humidity,sensor=htu21d,location=tent2 value=" + to_string(id(htu21d_humidity).state) +
+              "\n" +
+              "object_temperature,sensor=mlx90614,location=tent2 value=" + to_string(id(mlx_object_temperature).state) +
+              "\n" +
+              "soil_moisture,sensor=soil12,location=tent2 value=" + to_string(id(soil1).state) +
+              "\n" +
+              "vpd,sensor=custom,location=tent2 value=" + to_string(id(vpd))
+            ).c_str();
+          on_response:
+            then:
+              - logger.log:
+                  format: "Got REST response: %s"
+                  args: [ 'id(http_request_data).get_string()' ]
+  # light operation based on time
+#  - interval: 1min
+#    then:
+#      - lambda: |-
+#          auto time = id(sntp_time).now();
+#          // 20 hour light schedule
+#          if (time.hour >= 2 && time.hour < 6) {
+#            id(pwm_light).turn_off().perform();
+#            ESP_LOGD("custom", "Light off");
+#          } else {
+#            id(pwm_light).turn_on().perform();
+#            ESP_LOGD("custom", "Light on");
+#          }
+#  - interval: 5min
+#    then:
+#      - lambda: |-
+#          if (id(vpd) - 200 > id(target_vpd)) {
+#            // VPD is too high, turn on humidifier and fan
+#            id(sw_humidifier).turn_on();
+#            id(sw_fan).turn_on();
+#            id(vpd_control).turn_on(); // Activate timer for turning off
+#          } else if (id(vpd) + 200 < id(target_vpd)) {
+#            // VPD is too low, turn off humidifier and turn on fan
+#            id(sw_humidifier).turn_off();
+#            id(sw_fan).turn_on();
+#            id(vpd_control).turn_on(); // Activate timer for turning off
+#          }
+#switch:
+#  - platform: gpio
+#    pin: D0
+#    name: "Pump"
+#    inverted: true
+#    id: switch1
+
+#  - platform: gpio
+#    pin: D5
+#    name: "Fan 1"
+#    inverted: true
+#    id: sw_fan
+
+#  - platform: gpio
+#    pin: D6
+#    name: "Humidifier"
+#    inverted: true
+#    id: sw_humidifier
+
+number:
+  - platform: template
+    name: "Target VPD"
+    id: target_vpd_slider
+    min_value: 800.0
+    max_value: 1700.0
+    step: 1.0
+    unit_of_measurement: "Pa"
+    optimistic: true
+    initial_value: 1200.0
+    set_action:
+      - lambda: |-
+          id(target_vpd) = x;
+          ESP_LOGD("custom", "Target VPD set to: %.2f Pa", x);

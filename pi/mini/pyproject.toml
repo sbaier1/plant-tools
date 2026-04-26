@@ -1,0 +1,13 @@
+[project]
+name = "relay-control"
+version = "0.1.0"
+description = "GPIO17 relay control with BMP388 sensor monitoring"
+requires-python = ">=3.8"
+
+dependencies = [
+    "RPi.GPIO",
+    "adafruit-blinka",
+    "adafruit-circuitpython-bmp388",
+]
+
+

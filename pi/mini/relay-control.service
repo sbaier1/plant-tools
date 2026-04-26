@@ -1,0 +1,12 @@
+[Unit]
+Description=GPIO17 Relay Control (06:00–22:00)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /Users/simonbaier/Documents/projects/plant-tools/pi/mini/relay_control.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
